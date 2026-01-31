@@ -1,4 +1,4 @@
-# Headless Spotify MacOS - works with Claude code
+# Claude Code Spotify Jukebox
 
 ![jukebox demo](jukebox-demo.png)
 
