@@ -217,19 +217,137 @@ EOF
 
 ## Claude Code integration
 
-Add this to your `CLAUDE.md` and Claude Code will start the daemon on demand and control playback via the API:
+Create a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code) so you can type `/spotify` to control playback. The skill only loads its prompt when invoked — no wasted tokens in your system prompt.
+
+```bash
+mkdir -p ~/.claude/skills/spotify
+```
+
+Create `~/.claude/skills/spotify/SKILL.md`:
 
 ```markdown
-- **Spotify (headless)**: Headless Spotify daemon with media key support.
-  Start/stop: `spotify-ctl start` / `spotify-ctl stop` (starts on demand, not on boot)
-  Status: `spotify-ctl status`
-  Before playing music, check if running and start if needed.
-  API on `localhost:3678`:
-    Play: `curl -s -X POST http://localhost:3678/player/play -H 'Content-Type: application/json' -d '{"uri": "spotify:track:ID"}'`
-    Controls: playpause, next, prev, volume, shuffle, add_to_queue, seek
-  To find URIs: web search "<artist> <track> spotify", extract ID from open.spotify.com URL.
-  Use proactively when user asks to play music.
+---
+name: spotify
+description: Control headless Spotify playback
+user-invocable: true
+allowed-tools: Bash, WebSearch
+---
+
+# Spotify Control
+
+Headless Spotify via go-librespot + NowPlayingBridge.
+
+**When this skill is invoked, always start your response by printing this ASCII art exactly as shown:**
+
+\```
+                SPOTIFY JUKEBOX :)
+
+                    @#+++++++++++++++++++++++++++++++++++++%
+                    @#%                                  @#%
+                    @#%                                  @#@
+                 @#--=++++++++++++++++++++++++++++++++++++=--#@
+                 #--=%%%%#%%##%##%#%##%%%####%%##%##%%###%%+--#
+                 #---%%%%%%%@%%%%%%%%%%%%%%%@%%%%%%@%%%%%%%=--#
+                 #-#**%++*+%%-------*+-**-=#-------+%###%%#%%-#
+                 #-%+::=+:-:@------+%#-##-#%*------#=:-:::=:+=#
+                 %############################################%
+       @@@@@@@@@@#---------------%------------#=--------------#@@@@@@@@@@
+     @@@@@@@@@@@@#---=##+++##=---@************%=---*#*++*#*---#@@@@@@@@@@@@
+    @@@@       @@#--#:::+*+::-%--%-*:-::-:+:*-#=-**::=*+-::#*-#@@       @@@@
+    @@@@         #-%::@@@@  %::%-%-*::-=:*-:*-#=*-:#@@@= +::=+#         @@@@
+    =..-@@       #=-:+@@@%   =:+*%-*:*:::-:%#-#=@::@@@@:  @::##       @@-..=@
+    @......=*@   #-=::@@@@  .-:#+%-#@:::::+=*-#=%::@@@@#  #::##   @*=......@@
+   @:#+=%..%.@   #-#:::@@* %:::*-@@#--------#@@=-*::@@% *=::%-#   @.@..%=**:@
+   @........:@   #--+@:::::::@+--##############---#-::::::=#--#   @:........@
+   @-....*+.+@   #-----+***+-----@:+-++-%-#-%-%=----=***+=----#   @+.+*....:@
+    @#.#: :@     %---------------@:+-++:%:*:%:%=--------------#     @- :#.#@
+                  @%#%%%%%%%%%%##%%%###%%###%%%##%%%#%%%%%%#%@
+                            @@@@                 @@@@
+                            @@@@                @@@@@
+                            @@@@                @@@@
+                             @@@@               @@@@
+                             @@@@              @@@@
+                         @@@@ @@@@            @@@@  @@@
+                        #:---*@ @@@@@       @@@@@@%-::-+@
+                      @@=:--:::*+..++#@   %+%..:@-:::::-@@
+                      @.*:::::::::::::%@ @=::::::::::::+:*
+                       @-:%=........=*%@ @*#........-#=.%@
+                         @@##%@@%%@@%@    @@@@%%@@@%#%@
+\```
+
+Then check status and proceed with the user's request.
+
+## Service Management
+
+\```bash
+spotify-ctl status  # Check if running
+spotify-ctl start   # Start service
+spotify-ctl stop    # Stop service
+\```
+
+**Always check status before playing. Start if not running.**
+
+## Playback (API at localhost:3678)
+
+**Play by URI** (search web for Spotify URI first):
+\```bash
+curl -s -X POST http://localhost:3678/player/play -H 'Content-Type: application/json' -d '{"uri": "spotify:album:ID"}'
+\```
+
+**Controls**:
+\```bash
+curl -s -X POST http://localhost:3678/player/playpause
+curl -s -X POST http://localhost:3678/player/next
+curl -s -X POST http://localhost:3678/player/prev
+\```
+
+**Volume** (0-100):
+\```bash
+curl -s -X POST http://localhost:3678/player/volume -H 'Content-Type: application/json' -d '{"volume": 50}'
+\```
+
+**Shuffle**:
+\```bash
+curl -s -X POST http://localhost:3678/player/shuffle_context -H 'Content-Type: application/json' -d '{"shuffle_context": true}'
+\```
+
+**Queue a track**:
+\```bash
+curl -s -X POST http://localhost:3678/player/add_to_queue -H 'Content-Type: application/json' -d '{"uri": "spotify:track:ID"}'
+\```
+
+## Finding Spotify URIs
+
+1. Web search: "Artist Album spotify"
+2. Extract from open.spotify.com URL → `spotify:album:ID` or `spotify:track:ID` or `spotify:playlist:ID`
+
+## Workflow
+
+1. `spotify-ctl status` — check if running
+2. `spotify-ctl start` — start if needed
+3. Web search for Spotify URI
+4. Enable shuffle if playlist
+5. Play URI
 ```
+
+A copy of this file is included in the repo at `SKILL.md`.
+
+#### How skills work
+
+The `SKILL.md` frontmatter tells Claude Code:
+
+- **`name`** — the slash command name (type `/spotify` to invoke)
+- **`description`** — shown in skill listings and auto-complete
+- **`user-invocable: true`** — makes it available as a `/command` (vs. only programmatic)
+- **`allowed-tools`** — which Claude Code tools the skill can use (`Bash` for curl/spotify-ctl, `WebSearch` for finding Spotify URIs)
+
+The body is a prompt that Claude receives when the skill is invoked. It contains the API reference and workflow so Claude knows how to control playback autonomously.
+
+#### What it looks like
+
+Type `/spotify` in Claude Code, then describe what you want to hear:
+
+![Claude Code spotify skill demo](jukebox-demo.png)
 
 ### Device conflicts
 
@@ -277,7 +395,8 @@ Commands: `status`, `play <uri>`, `pause`, `next`, `prev`, `vol <0-100>`, `seek 
 ```
 headless-spotify-macos/
 ├── README.md
-├── jukebox-demo.png            # Screenshot for README header
+├── SKILL.md                    # Claude Code skill (copy to ~/.claude/skills/spotify/)
+├── jukebox-demo.png            # Screenshot for README
 ├── spotify-ctl.sh              # Start/stop/status control script
 ├── NowPlayingBridge/
 │   ├── Sources/
